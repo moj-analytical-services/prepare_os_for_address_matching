@@ -1,0 +1,53 @@
+# NGD Pipeline Configuration
+# All paths are relative to this config file's directory unless absolute
+
+paths:
+  # Base working directory for all data
+  work_dir: ./data
+
+  # Downloaded zip files from OS
+  downloads_dir: ./data/downloads
+
+  # Extracted CSV files and intermediate parquet
+  extracted_dir: ./data/extracted
+
+  # Final output parquet files
+  output_dir: ./data/output
+
+# OS Data Hub download settings
+# Given a datapackage at: https://osdatahub.os.uk/data/downloads/data-packages/16331
+# You can get versions from:
+#   Base: https://api.os.uk/downloads/v1
+#   Auth: send header key: OS_PROJECT_API_KEY
+#   GET /dataPackages/16331/versions
+
+# Small sample
+# os_downloads:
+#   # Data package ID from OS Data Hub
+#   package_id: "16331"
+#   # Version ID (update this when new data is released)
+#   version_id: "103792"
+
+# Full supply
+os_downloads:
+  # Data package ID from OS Data Hub
+  package_id: "16465"
+  # Version ID (update this when new data is released)
+  version_id: "104444"
+
+# Processing options
+processing:
+  # Parquet compression settings
+  parquet_compression: zstd
+  parquet_compression_level: 9
+
+  # DuckDB memory limit (optional)
+  # If set, limits how much RAM DuckDB can use (e.g., '4GB', '500MB')
+  # Useful for testing on low-memory machines
+  # If not set, DuckDB uses its default (80% of physical RAM)
+  # duckdb_memory_limit: "8GB"
+
+  # Number of chunks to split flatfile processing into (default: 1)
+  # Use higher values (e.g., 10) for lower memory usage on laptops
+  # Output will be split into multiple parquet files, one per chunk
+  num_chunks: 5
