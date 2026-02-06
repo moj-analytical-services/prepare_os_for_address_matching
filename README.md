@@ -12,6 +12,7 @@ The whole pipline is automated:
 - Set up your datapackage in the OS Data Hub, and update [the config](config.yaml) with the `package_id` and `version_id`
 - Provide your OS API key in the `.env` file (from https://osdatahub.os.uk/data/apis/projects -> your project)
 - Run [script.py](script.py)
+- The resultant parquet file(s) (default path `.data/output`) are now in the format required by `uk_address_matcher`.
 
 ## Quick Start
 
