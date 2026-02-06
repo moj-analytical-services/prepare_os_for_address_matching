@@ -8,6 +8,11 @@ This package downloads, extracts, and transforms [OS NGD](https://www.ordnancesu
 
 NGD data is available to many government users under the [PSGA](https://www.ordnancesurvey.co.uk/customers/public-sector/public-sector-geospatial-agreement).
 
+The whole pipline is automated:
+- Set up your datapackage in the OS Data Hub, and update [the config](config.yaml) with the `package_id` and `version_id`
+- Provide your OS API key in the `.env` file (from https://osdatahub.os.uk/data/apis/projects -> your project)
+- Run [script.py](script.py)
+
 ## Quick Start
 
 ### 1. Prerequisites
