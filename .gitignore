@@ -1,3 +1,4 @@
+data_old/
 view_specific.py
 data/
 !tests/data/
