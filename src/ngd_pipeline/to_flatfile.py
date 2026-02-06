@@ -60,16 +60,19 @@ def _create_core_feature_view(
     con: duckdb.DuckDBPyConnection,
     view_name: str,
     parquet_path: Path,
+    uprn_predicate: str | None = None,
 ) -> None:
     """Create view for core feature types (Built, Historic, Pre-Build, Non-Addressable).
 
     These tables have fulladdress, classification fields, and Welsh language columns.
     Produces both English and Welsh (where available) address records.
     """
+    where_clause = f"WHERE {uprn_predicate}" if uprn_predicate else ""
     sql = f"""
         CREATE OR REPLACE TEMP VIEW {view_name} AS
         WITH src AS (
             SELECT * FROM read_parquet('{parquet_path.as_posix()}')
+            {where_clause}
         )
         -- English track
         SELECT
@@ -132,11 +135,13 @@ def _create_altadd_view(
     view_name: str,
     parquet_path: Path,
     feature_type: str,
+    uprn_predicate: str | None = None,
 ) -> None:
     """Create view for alternate address records.
 
     These tables have fewer fields - no classification columns.
     """
+    where_clause = f"WHERE {uprn_predicate}" if uprn_predicate else ""
     sql = f"""
         CREATE OR REPLACE TEMP VIEW {view_name} AS
         SELECT
@@ -153,7 +158,8 @@ def _create_altadd_view(
               WHEN lower(coalesce(language,'')) IN ('cym','wel','welsh','cymraeg') THEN 'cym'
               ELSE 'eng'
             END AS language
-        FROM read_parquet('{parquet_path.as_posix()}');
+                FROM read_parquet('{parquet_path.as_posix()}')
+                {where_clause};
     """
     con.execute(sql)
 
@@ -162,17 +168,22 @@ def _create_royal_mail_view(
     con: duckdb.DuckDBPyConnection,
     view_name: str,
     parquet_path: Path,
+    uprn_predicate: str | None = None,
 ) -> None:
     """Create view for Royal Mail Address records.
 
     Builds address from component fields. Produces both English and Welsh variants.
     Excludes records where matchedaddressfeaturetype is 'Non-Addressable Object'.
     """
+    conditions = ["matchedaddressfeaturetype != 'Non-Addressable Object'"]
+    if uprn_predicate:
+        conditions.insert(0, uprn_predicate)
+    where_clause = "WHERE " + " AND ".join(conditions)
     sql = f"""
         CREATE OR REPLACE TEMP VIEW {view_name} AS
         WITH src AS (
             SELECT * FROM read_parquet('{parquet_path.as_posix()}')
-            WHERE matchedaddressfeaturetype != 'Non-Addressable Object'
+            {where_clause}
         )
         -- English
         SELECT
@@ -312,6 +323,23 @@ def _hash_partition_predicate(num_chunks: int, chunk_index: int) -> str:
     return f"abs(hash(uprn)) % {num_chunks} = {chunk_index}"
 
 
+def _ensure_uprn_column(con: duckdb.DuckDBPyConnection, parquet_paths: list[Path]) -> None:
+    """Verify that UPRN exists in all required parquet schemas."""
+    missing_uprn: list[str] = []
+
+    for path in parquet_paths:
+        columns = con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{path.as_posix()}')"
+        ).fetchall()
+        column_names = {row[0].lower() for row in columns}
+        if "uprn" not in column_names:
+            missing_uprn.append(path.name)
+
+    if missing_uprn:
+        missing_list = ", ".join(sorted(missing_uprn))
+        raise ToFlatfileError("UPRN column missing from required parquet files: " + missing_list)
+
+
 def run_flatfile_step(settings: Settings, force: bool = False) -> list[Path]:
     """Run the flatfile step of the pipeline.
 
@@ -372,62 +400,91 @@ def run_flatfile_step(settings: Settings, force: bool = False) -> list[Path]:
     temp_dir.mkdir(exist_ok=True)
     con.execute(f"PRAGMA temp_directory='{temp_dir.as_posix()}'")
 
-    # Create views for each parquet file
-    created_views: list[str] = []
-
+    # Validate UPRN availability in all address parquet files
+    address_parquet_files: list[Path] = []
     for path in sorted(parquet_files):
         stem = path.stem.lower()
-        view_name = f"addr_{stem.replace('-', '_')}"
+        if stem in CORE_FEATURE_STEMS or stem in ALTADD_STEMS or stem == "add_gb_royalmailaddress":
+            address_parquet_files.append(path)
 
-        if stem in CORE_FEATURE_STEMS:
-            logger.debug("Creating core feature view for %s", path.name)
-            _create_core_feature_view(con, view_name, path)
-            created_views.append(view_name)
-
-        elif stem in ALTADD_STEMS:
-            feature_type = FEATURE_TYPE_BY_STEM.get(stem, "Alternate Address")
-            logger.debug("Creating alternate address view for %s", path.name)
-            _create_altadd_view(con, view_name, path, feature_type)
-            created_views.append(view_name)
-
-        elif stem == "add_gb_royalmailaddress":
-            logger.debug("Creating Royal Mail view for %s", path.name)
-            _create_royal_mail_view(con, view_name, path)
-            created_views.append(view_name)
-
-        else:
-            logger.debug("Skipping %s (not a recognized address file)", path.name)
-            continue
-
-    if not created_views:
+    if not address_parquet_files:
         raise ToFlatfileError("No valid address parquet files found to process.")
 
-    logger.info("Created %d address views", len(created_views))
-
-    # Union all views into a single table
-    union_sql = " \nUNION ALL\n".join(f"SELECT * FROM {v}" for v in created_views)
-    logger.info("Creating union table of all addresses...")
-    con.execute(f"""
-        CREATE OR REPLACE TABLE all_full_addresses AS
-        {union_sql};
-    """)
-
-    # Create deduplicated view
-    logger.info("Creating deduplicated view...")
-    _create_dedup_view(con)
-
-    # Get count
-    count_result = con.execute("SELECT COUNT(*) FROM all_full_addresses_dedup").fetchone()
-    total_count = count_result[0] if count_result else 0
-    logger.info("Total addresses after deduplication: %d", total_count)
+    logger.info("Checking UPRN availability in %d parquet files", len(address_parquet_files))
+    _ensure_uprn_column(con, address_parquet_files)
 
     # Export to parquet file(s)
     output_files: list[Path] = []
+    total_count = 0
 
-    if num_chunks <= 1:
-        # Single file output
-        output_path = output_dir / "ngd_for_uk_address_matcher.chunk_001_of_001.parquet"
-        logger.info("Exporting to %s...", output_path.name)
+    def process_chunk(chunk_index: int, chunk_total: int) -> tuple[Path, int]:
+        uprn_predicate = (
+            None if chunk_total <= 1 else _hash_partition_predicate(chunk_total, chunk_index)
+        )
+        if uprn_predicate:
+            logger.info("Applying chunk predicate: %s", uprn_predicate)
+
+        created_views: list[str] = []
+
+        for path in sorted(parquet_files):
+            stem = path.stem.lower()
+            view_name = f"addr_{stem.replace('-', '_')}"
+
+            if stem in CORE_FEATURE_STEMS:
+                logger.debug("Creating core feature view for %s", path.name)
+                _create_core_feature_view(con, view_name, path, uprn_predicate)
+                created_views.append(view_name)
+
+            elif stem in ALTADD_STEMS:
+                feature_type = FEATURE_TYPE_BY_STEM.get(stem, "Alternate Address")
+                logger.debug("Creating alternate address view for %s", path.name)
+                _create_altadd_view(con, view_name, path, feature_type, uprn_predicate)
+                created_views.append(view_name)
+
+            elif stem == "add_gb_royalmailaddress":
+                logger.debug("Creating Royal Mail view for %s", path.name)
+                _create_royal_mail_view(con, view_name, path, uprn_predicate)
+                created_views.append(view_name)
+
+            else:
+                logger.debug("Skipping %s (not a recognized address file)", path.name)
+                continue
+
+        if not created_views:
+            raise ToFlatfileError("No valid address parquet files found to process.")
+
+        logger.info("Created %d address views", len(created_views))
+
+        # Union all views into a single table
+        union_sql = " \nUNION ALL\n".join(f"SELECT * FROM {v}" for v in created_views)
+        logger.info("Creating union table of all addresses...")
+        con.execute(f"""
+            CREATE OR REPLACE TABLE all_full_addresses AS
+            {union_sql};
+        """)
+
+        # Create deduplicated view
+        logger.info("Creating deduplicated view...")
+        _create_dedup_view(con)
+
+        # Get count
+        count_result = con.execute("SELECT COUNT(*) FROM all_full_addresses_dedup").fetchone()
+        chunk_count = count_result[0] if count_result else 0
+        logger.info(
+            "Chunk %d/%d addresses after deduplication: %d",
+            chunk_index + 1,
+            chunk_total,
+            chunk_count,
+        )
+
+        # Export chunk
+        if chunk_total <= 1:
+            chunk_name = "ngd_for_uk_address_matcher.chunk_001_of_001.parquet"
+        else:
+            chunk_name = f"ngd_for_uk_address_matcher.chunk_{chunk_index + 1:03d}_of_{chunk_total:03d}.parquet"
+        output_path = output_dir / chunk_name
+
+        logger.info("Exporting chunk %d/%d: %s", chunk_index + 1, chunk_total, chunk_name)
 
         if output_path.exists():
             output_path.unlink()
@@ -437,28 +494,22 @@ def run_flatfile_step(settings: Settings, force: bool = False) -> list[Path]:
                 SELECT * FROM all_full_addresses_dedup
             ) TO '{output_path.as_posix()}' (FORMAT 'PARQUET');
         """)
-        output_files.append(output_path)
 
+        return output_path, chunk_count
+
+    if num_chunks <= 1:
+        output_path, chunk_count = process_chunk(0, 1)
+        output_files.append(output_path)
+        total_count = chunk_count
     else:
-        # Multi-chunk output
         logger.info("Splitting output into %d chunks...", num_chunks)
 
         for i in range(num_chunks):
-            chunk_name = f"ngd_for_uk_address_matcher.chunk_{i + 1:03d}_of_{num_chunks:03d}.parquet"
-            output_path = output_dir / chunk_name
-
-            logger.info("Exporting chunk %d/%d: %s", i + 1, num_chunks, chunk_name)
-
-            if output_path.exists():
-                output_path.unlink()
-
-            con.execute(f"""
-                COPY (
-                    SELECT * FROM all_full_addresses_dedup
-                    WHERE {_hash_partition_predicate(num_chunks, i)}
-                ) TO '{output_path.as_posix()}' (FORMAT 'PARQUET');
-            """)
+            output_path, chunk_count = process_chunk(i, num_chunks)
             output_files.append(output_path)
+            total_count += chunk_count
+
+    logger.info("Total addresses after deduplication: %d", total_count)
 
     # Cleanup temp directory
     try:

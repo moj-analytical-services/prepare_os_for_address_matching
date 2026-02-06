@@ -21,19 +21,19 @@ paths:
 #   Auth: send header key: OS_PROJECT_API_KEY
 #   GET /dataPackages/16331/versions
 
-# Small sample
-# os_downloads:
-#   # Data package ID from OS Data Hub
-#   package_id: "16331"
-#   # Version ID (update this when new data is released)
-#   version_id: "103792"
-
-# Full supply
+# Hackney only:
 os_downloads:
   # Data package ID from OS Data Hub
-  package_id: "16465"
+  package_id: "18296"
   # Version ID (update this when new data is released)
-  version_id: "104444"
+  version_id: "118120"
+
+# Full supply
+# os_downloads:
+#   # Data package ID from OS Data Hub
+#   package_id: "16465"
+#   # Version ID (update this when new data is released)
+#   version_id: "104444"
 
 # Processing options
 processing:
@@ -50,4 +50,4 @@ processing:
   # Number of chunks to split flatfile processing into (default: 1)
   # Use higher values (e.g., 10) for lower memory usage on laptops
   # Output will be split into multiple parquet files, one per chunk
-  num_chunks: 5
+  num_chunks: 20
