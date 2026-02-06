@@ -112,18 +112,31 @@ Chunking reduces memory usage by processing UPRNs in batches. The union of all c
 
 Each file contains:
 
-| Column | Description |
-|--------|-------------|
-| `uprn` | Unique Property Reference Number |
-| `full_address_with_postcode` | Complete address string including postcode |
-| `filename` | Source file name |
-| `feature_type` | Type: Built Address, Pre-Build Address, Royal Mail Address, Historic Address |
-| `address_status` | Status: Approved, Provisional, Alternative, Historical |
-| `build_status` | Build status: Built Complete, Under Construction, Prebuild, etc. |
-| `postcodesource` | Source of postcode data |
-| `classification_code` | Property classification code |
-| `matched_address_feature_type` | For Royal Mail addresses, the matched feature type |
-| `language` | Language: 'eng' (English) or 'cym' (Welsh) |
+| Column | Type | Description |
+|--------|------|-------------|
+| `uprn` | BIGINT | Unique Property Reference Number |
+| `address_concat` | VARCHAR | Complete address string including postcode |
+| `filename` | VARCHAR | Source file name (e.g., `add_gb_builtaddress.parquet`) |
+| `classificationcode` | VARCHAR | Property classification code (e.g., RD06 for residential) |
+| `parentuprn` | BIGINT | Parent UPRN for hierarchical addresses |
+| `rootuprn` | BIGINT | Root UPRN at the top of the hierarchy |
+| `hierarchylevel` | INTEGER | Level in the address hierarchy (1 = root) |
+| `floorlevel` | VARCHAR | Floor level identifier |
+| `lowestfloorlevel` | DOUBLE | Lowest floor number |
+| `highestfloorlevel` | DOUBLE | Highest floor number |
+
+Example rows:
+
+```
+┌───────────┬─────────────────────────────────────────────────────────┬─────────────────────────────────┬────────────────────┬────────────┬───────────┬────────────────┬────────────┐
+│   uprn    │                      address_concat                     │            filename             │ classificationcode │ parentuprn │ rootuprn  │ hierarchylevel │ floorlevel │
+├───────────┼─────────────────────────────────────────────────────────┼─────────────────────────────────┼────────────────────┼────────────┼───────────┼────────────────┼────────────┤
+│   6001491 │ 7, LARK ROW, LONDON, E2 9JA                             │ add_gb_builtaddress.parquet     │ RD06               │       NULL │   6001491 │              1 │ NULL       │
+│   6004118 │ FLAT 9, BENSON HOUSE, LIGONIER STREET, LONDON, E2 7HH   │ add_gb_builtaddress.parquet     │ RD06               │    6130169 │   6130169 │              2 │ 4          │
+└───────────┴─────────────────────────────────────────────────────────┴─────────────────────────────────┴────────────────────┴────────────┴───────────┴────────────────┴────────────┘
+```
+
+Metadata columns (`classificationcode`, `parentuprn`, `rootuprn`, `hierarchylevel`, `floorlevel`, `lowestfloorlevel`, `highestfloorlevel`) are enriched via UPRN lookup from core address files. This means Royal Mail addresses and alternate address records receive metadata from their corresponding Built/Historic/Pre-Build address records.
 
 ## Data Sources
 
@@ -136,11 +149,11 @@ The pipeline processes the following NGD address feature types:
 - **Royal Mail Address** (`add_gb_royalmailaddress`) - PAF delivery points
 - **Alternate addresses** (`*_altadd`) - Alternative address variants
 
-Welsh language variants are extracted where available.
+Welsh language variants are extracted where available and appear as separate rows in the output.
 
 ## Deduplication Logic
 
-When the same UPRN+address combination appears in multiple sources, records are deduplicated using these priority rules:
+When the same UPRN+address combination appears in multiple sources, records are deduplicated using these priority rules (applied internally during processing):
 
 **Feature Type Priority:**
 1. Built Address (highest)
