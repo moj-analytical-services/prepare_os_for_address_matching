@@ -14,6 +14,8 @@ The whole pipline is automated:
 - Run [script.py](script.py)
 - The resultant parquet file(s) (default path `.data/output`) are now in the format required by `uk_address_matcher`.
 
+If you prefer to use AddressBase Premium, an equivalent repo is available [here](https://github.com/moj-analytical-services/prepare_addressbase_for_address_matching)
+
 ## Quick Start
 
 ### 1. Prerequisites
