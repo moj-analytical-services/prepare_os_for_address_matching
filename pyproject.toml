@@ -11,6 +11,10 @@ dependencies = [
     "requests>=2.31.0",
 ]
 
+[project.scripts]
+ukam-ngd-build = "ngd_pipeline.cli:main"
+ukam-ngd-setup = "ngd_pipeline.setup_wizard:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
