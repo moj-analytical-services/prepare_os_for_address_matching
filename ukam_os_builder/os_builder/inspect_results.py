@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
@@ -7,6 +8,8 @@ import duckdb
 import yaml
 
 SourceType = Literal["ngd", "abp"]
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_SELECT_COLUMNS = [
     "uprn",
@@ -347,15 +350,15 @@ def inspect_flatfile_variants(
     ).fetchall()
 
     if show:
-        print(f"Source: {source}")
-        print(f"Matched files: {len(output_files)}")
-        print(f"Selected UPRN: {target_uprn} (variants: {variant_count})")
-        print("\\nSample rows:")
-        con.execute(f"SELECT * FROM read_parquet('{files_sql}') LIMIT {sample_limit}").show(
+        logger.info("Source: %s", source)
+        logger.info("Matched files: %d", len(output_files))
+        logger.info("Selected UPRN: %s (variants: %d)", target_uprn, variant_count)
+        logger.info("Sample rows:")
+        con.sql(f"SELECT * FROM read_parquet('{files_sql}') LIMIT {sample_limit}").show(
             max_width=10_000
         )
-        print("\\nSelected UPRN rows:")
-        con.execute(f"SELECT * FROM read_parquet('{files_sql}') WHERE uprn = {target_uprn}").show(
+        logger.info("Selected UPRN rows:")
+        con.sql(f"SELECT * FROM read_parquet('{files_sql}') WHERE uprn = {target_uprn}").show(
             max_width=10_000
         )
 
