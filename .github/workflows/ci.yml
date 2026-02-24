@@ -57,7 +57,7 @@ jobs:
         run: |
           uv venv .venv-wheeltest -p 3.10 --clear
           uv pip install --python .venv-wheeltest/bin/python dist/*.whl
-          .venv-wheeltest/bin/python -c "import ngd_pipeline; print('Imported ngd_pipeline OK')"
+          .venv-wheeltest/bin/python -c "import ukam_os_builder; print('Imported ukam_os_builder OK')"
           .venv-wheeltest/bin/ukam-os-build --help
           .venv-wheeltest/bin/ukam-os-setup --help
 
