@@ -4,8 +4,6 @@ Transform OS NGD (National Geographic Database) address data into parquet output
 
 ## Requirements
 
-- Python `3.12+`
-- [`uv`](https://github.com/astral-sh/uv)
 - OS Data Hub package and version IDs
 - Network access to OS Downloads API
 - Credentials in `.env`:
