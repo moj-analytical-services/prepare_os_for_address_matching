@@ -1,0 +1,68 @@
+name: Build & package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "README.md"
+      - "shell/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --all-groups
+
+      - name: Lint
+        run: uv run ruff check src/ tests/
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Build sdist + wheel
+        run: uv run --with build python -m build
+
+      - name: Check package metadata
+        run: uv run --with twine python -m twine check dist/*
+
+      - name: Smoke test wheel installs and CLI
+        run: |
+          uv venv .venv-wheeltest -p 3.12 --clear
+          uv pip install --python .venv-wheeltest/bin/python dist/*.whl
+          .venv-wheeltest/bin/python -c "import ngd_pipeline; print('Imported ngd_pipeline OK')"
+          .venv-wheeltest/bin/ukam-ngd-build --help
+          .venv-wheeltest/bin/ukam-ngd-setup --help
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*

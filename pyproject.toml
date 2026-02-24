@@ -1,9 +1,16 @@
 [project]
-name = "ngd-pipeline"
+name = "ukam-ngd-pipeline"
 version = "0.1.0"
 description = "Download, process and transform NGD (National Geographic Database) data for UK address matching"
 readme = "README.md"
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "duckdb>=1.0.0",
     "pydantic>=2.0.0",
@@ -12,6 +19,11 @@ dependencies = [
     "rich>=13.7.0",
     "requests>=2.31.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/moj-analytical-services/prepare_ngd_for_address_matching"
+Repository = "https://github.com/moj-analytical-services/prepare_ngd_for_address_matching"
+Issues = "https://github.com/moj-analytical-services/prepare_ngd_for_address_matching/issues"
 
 [project.scripts]
 ukam-ngd-build = "ngd_pipeline.cli:main"
