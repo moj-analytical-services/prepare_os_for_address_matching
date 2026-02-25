@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -114,7 +115,12 @@ def load_existing_defaults(config_path: Path) -> dict[str, object]:
     return merged
 
 
-def write_env_file(path: Path, overwrite: bool = False) -> bool:
+def write_env_file(
+    path: Path,
+    overwrite: bool = False,
+    api_key: str | None = None,
+    api_secret: str | None = None,
+) -> bool:
     """Write .env file with credential placeholders.
 
     Returns True if file was written, False if skipped.
@@ -122,11 +128,15 @@ def write_env_file(path: Path, overwrite: bool = False) -> bool:
     if path.exists() and not overwrite:
         return False
 
+    # If either API key or secret are not provided, error the pipeline
+    if (api_key and not api_secret) or (api_secret and not api_key):
+        raise ValueError("Both 'api_key' and 'api_secret' must be provided together.")
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "# OS Data Hub API credentials\n"
-        "OS_PROJECT_API_KEY=your_api_key_here\n"
-        "OS_PROJECT_API_SECRET=your_api_secret_here\n",
+        f"OS_PROJECT_API_KEY={api_key or 'your_api_key_here'}\n"
+        f"OS_PROJECT_API_SECRET={api_secret or 'your_api_secret_here'}\n",
         encoding="utf-8",
     )
     return True
@@ -138,6 +148,9 @@ def write_config_and_env(
     env_out: str | Path = ".env",
     *,
     overwrite_env: bool = False,
+    write_env: bool = True,
+    api_key: str | None = None,
+    api_secret: str | None = None,
 ) -> tuple[Path, Path, bool]:
     """Write provided config plus .env template to disk."""
     config_out_path = Path(config_out).resolve()
@@ -146,16 +159,25 @@ def write_config_and_env(
     config_out_path.parent.mkdir(parents=True, exist_ok=True)
     config_text = render_annotated_config(config)
     config_out_path.write_text(config_text, encoding="utf-8")
-    env_written = write_env_file(env_out_path, overwrite=overwrite_env)
+    env_written = False
+    if write_env:
+        env_written = write_env_file(
+            env_out_path,
+            overwrite=overwrite_env,
+            api_key=api_key,
+            api_secret=api_secret,
+        )
 
     logger.info(f"Wrote config for '{config['source']['type']}' to {config_out_path}")
-    if env_written:
+    if write_env and env_written:
         logger.info(f"Wrote .env template to {env_out_path}")
-    else:
+    elif write_env:
         logger.info(
             f".env file already exists at {env_out_path} and was not overwritten. "
             "Set overwrite_env=True to overwrite it.",
         )
+    else:
+        logger.info("Skipped writing .env file")
 
     return config_out_path, env_out_path, env_written
 
@@ -170,6 +192,8 @@ def create_config_and_env(
     overwrite_env: bool = False,
     paths: dict[str, str] | None = None,
     processing: dict[str, Any] | None = None,
+    api_key: str | None = None,
+    api_secret: str | None = None,
 ) -> tuple[Path, Path, bool]:
     """Create config.yaml and .env template programmatically."""
     if not package_id or not package_id.strip():
@@ -194,6 +218,8 @@ def create_config_and_env(
         config_out=config_out_path,
         env_out=env_out,
         overwrite_env=overwrite_env,
+        api_key=api_key,
+        api_secret=api_secret,
     )
 
 
@@ -268,13 +294,22 @@ def run_from_config(
     duckdb_memory_limit: str | None = None,
     parquet_compression: str | None = None,
     parquet_compression_level: int | None = None,
+    api_key: str | None = None,
+    api_secret: str | None = None,
     check_api: bool = True,
 ) -> Any:
     """Load settings from config, apply overrides, and run the pipeline."""
     if list_only and step not in {"download", "all"}:
         raise ValueError("--list-only can only be used with --step download or --step all")
 
+    if (api_key and not api_secret) or (api_secret and not api_key):
+        raise ValueError("Both '--api-key' and '--api-secret' must be provided together.")
+
     config_path = Path(config_path).resolve()
+
+    if api_key and api_secret:
+        os.environ["OS_PROJECT_API_KEY"] = api_key
+        os.environ["OS_PROJECT_API_SECRET"] = api_secret
 
     settings = load_settings(config_path, load_env=True, env_path=env_file)
 
