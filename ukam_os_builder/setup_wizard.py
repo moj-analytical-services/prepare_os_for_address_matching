@@ -73,6 +73,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Overwrite .env output file if it already exists.",
     )
     parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Optional OS API key to write into .env.",
+    )
+    parser.add_argument(
+        "--api-secret",
+        default=None,
+        help="Optional OS API secret to write into .env.",
+    )
+    parser.add_argument(
         "--env-example-out",
         dest="env_out",
         help=argparse.SUPPRESS,
@@ -100,6 +110,13 @@ def main(argv: list[str] | None = None) -> int:
 
     config_out = Path(args.config_out).resolve()
     env_out = Path(args.env_out).resolve()
+    write_env = True
+    overwrite_env = args.overwrite_env
+    api_key = args.api_key
+    api_secret = args.api_secret
+
+    if (api_key and not api_secret) or (api_secret and not api_key):
+        parser.error("--api-key and --api-secret must be provided together")
 
     config = load_existing_defaults(config_out)
     if args.source is not None:
@@ -184,25 +201,50 @@ def main(argv: list[str] | None = None) -> int:
             elif "duckdb_memory_limit" in config["processing"]:
                 del config["processing"]["duckdb_memory_limit"]
 
+        if _confirm("Set up .env credentials now?", default_yes=True):
+            if env_out.exists() and not overwrite_env:
+                if _confirm(
+                    f".env already exists at {env_out}. Overwrite with new credentials?",
+                    default_yes=False,
+                ):
+                    overwrite_env = True
+                else:
+                    write_env = False
+
+            if write_env:
+                api_key = _prompt_non_empty("OS_PROJECT_API_KEY")
+                api_secret = _prompt_non_empty("OS_PROJECT_API_SECRET")
+        else:
+            write_env = False
+
     config_out, env_out, env_written = write_config_and_env(
         config=config,
         config_out=config_out,
         env_out=env_out,
-        overwrite_env=args.overwrite_env,
+        overwrite_env=overwrite_env,
+        write_env=write_env,
+        api_key=api_key,
+        api_secret=api_secret,
     )
 
     console.print(f"[green]✓[/green] Wrote config: [bold]{config_out}[/bold]")
     if env_written:
-        console.print(f"[green]✓[/green] Wrote .env template: [bold]{env_out}[/bold]")
+        console.print(f"[green]✓[/green] Wrote .env file: [bold]{env_out}[/bold]")
     else:
-        console.print(
-            f"[yellow]•[/yellow] Kept existing .env file: [bold]{env_out}[/bold] "
-            "(use --overwrite-env to replace)"
-        )
-    console.print(
-        "[yellow]Next:[/yellow] add real values for OS_PROJECT_API_KEY and "
-        "OS_PROJECT_API_SECRET in .env before running."
-    )
+        if write_env:
+            console.print(
+                f"[yellow]•[/yellow] Kept existing .env file: [bold]{env_out}[/bold] "
+                "(use --overwrite-env to replace)"
+            )
+        else:
+            console.print(
+                f"[yellow]•[/yellow] Skipped .env updates: [bold]{env_out}[/bold] "
+                "(existing file left unchanged)"
+            )
+            console.print(
+                "[yellow]Next:[/yellow] add real values for OS_PROJECT_API_KEY and "
+                "OS_PROJECT_API_SECRET in .env before running."
+            )
 
     return 0
 

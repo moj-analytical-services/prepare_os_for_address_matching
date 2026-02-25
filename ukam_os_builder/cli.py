@@ -69,6 +69,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--package-id", help="Override os_downloads.package_id.")
     parser.add_argument("--version-id", help="Override os_downloads.version_id.")
+    parser.add_argument(
+        "--api-key",
+        help="Override OS_PROJECT_API_KEY for this run.",
+    )
+    parser.add_argument(
+        "--api-secret",
+        help="Override OS_PROJECT_API_SECRET for this run.",
+    )
 
     parser.add_argument("--work-dir", help="Override paths.work_dir.")
     parser.add_argument("--downloads-dir", help="Override paths.downloads_dir.")
@@ -123,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
             env_file=args.env_file,
             overwrite=args.overwrite,
             list_only=args.list_only,
+            api_key=args.api_key,
+            api_secret=args.api_secret,
             package_id=args.package_id,
             version_id=args.version_id,
             work_dir=args.work_dir,
