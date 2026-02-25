@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from textwrap import dedent
 from typing import Literal
@@ -38,6 +39,37 @@ def test_create_config_and_env_writes_expected_files(tmp_path: Path) -> None:
     env_text = env_path.read_text()
     assert "OS_PROJECT_API_KEY=your_api_key_here" in env_text
     assert "OS_PROJECT_API_SECRET=your_api_secret_here" in env_text
+
+
+def test_create_config_and_env_writes_supplied_api_credentials(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    env_path = tmp_path / ".env"
+
+    create_config_and_env(
+        config_out=config_path,
+        env_out=env_path,
+        source="ngd",
+        package_id="16331",
+        version_id="104444",
+        api_key="my-key",
+        api_secret="my-secret",
+    )
+
+    env_text = env_path.read_text()
+    assert "OS_PROJECT_API_KEY=my-key" in env_text
+    assert "OS_PROJECT_API_SECRET=my-secret" in env_text
+
+
+def test_create_config_and_env_rejects_partial_api_credentials(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must be provided together"):
+        create_config_and_env(
+            config_out=tmp_path / "config.yaml",
+            env_out=tmp_path / ".env",
+            source="ngd",
+            package_id="16331",
+            version_id="104444",
+            api_key="my-key",
+        )
 
 
 def test_run_from_config_applies_overrides(
@@ -95,6 +127,47 @@ def test_run_from_config_applies_overrides(
     assert calls["force"] is True
     assert calls["list_only"] is True
     assert calls["num_chunks"] == 5
+
+
+def test_run_from_config_accepts_api_key_secret_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("OS_PROJECT_API_KEY", raising=False)
+    monkeypatch.delenv("OS_PROJECT_API_SECRET", raising=False)
+
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        """
+        source:
+          type: ngd
+
+        os_downloads:
+          package_id: "16465"
+          version_id: "104444"
+        """,
+    )
+
+    monkeypatch.setattr("ukam_os_builder.api.api.get_package_version", lambda _settings: None)
+    monkeypatch.setattr("ukam_os_builder.api.api.run_pipeline", lambda **_kwargs: None)
+
+    run_from_config(
+        config_path=config_path,
+        api_key="runtime-key",
+        api_secret="runtime-secret",
+    )
+
+    assert os.environ["OS_PROJECT_API_KEY"] == "runtime-key"
+    assert os.environ["OS_PROJECT_API_SECRET"] == "runtime-secret"
+
+
+def test_run_from_config_rejects_partial_api_credentials(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must be provided together"):
+        run_from_config(
+            config_path=tmp_path / "config.yaml",
+            api_key="runtime-key",
+        )
 
 
 def test_run_from_config_validates_list_only_step(tmp_path: Path) -> None:
