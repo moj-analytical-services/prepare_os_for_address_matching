@@ -251,7 +251,7 @@ def apply_run_overrides(
 def run_from_config(
     config_path: str | Path,
     *,
-    step: str = "all",
+    step: Literal["all", "download"] = "all",
     source: SourceType | None = None,
     env_file: str | Path | None = None,
     overwrite: bool | None = None,

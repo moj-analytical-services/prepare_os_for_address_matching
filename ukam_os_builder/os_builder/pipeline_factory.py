@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal
 
 from ukam_os_builder._exceptions import PipelineError
 
@@ -64,7 +64,7 @@ def _clean_directory(directory: Path, patterns: list[str], *, logger: logging.Lo
 
 def _clean_outputs_for_step(
     *,
-    step: str,
+    step: Literal["all", "download"],
     settings: Any,
     definition: PipelineDefinition,
     logger: logging.Logger,
@@ -101,18 +101,20 @@ def _clean_outputs_for_step(
 def run_pipeline(
     *,
     definition: PipelineDefinition,
-    step: str,
+    step: Literal["all", "download"],
     settings: Any,
     force: bool = False,
     list_only: bool = False,
     logger: logging.Logger,
 ) -> None:
     """Run pipeline using shared control flow and dataset-specific step factories."""
-    valid_steps = [pipeline_step.name for pipeline_step in definition.steps]
-    valid_with_all = {"all", *valid_steps}
-    if step not in valid_with_all:
+    valid_steps = {"all", "download"}
+    # Only allow users to leverage "download" and "all" steps for pipeline runs
+    # This simplifies the task of interacting with the pipeline and should encompass
+    # most common use cases (e.g. re-running the download step, or re-running the entire pipeline)
+    if step not in valid_steps:
         raise PipelineError(
-            f"Invalid step: {step}. Must be one of: {', '.join(sorted(valid_with_all))}"
+            f"Invalid step: {step}. Must be one of: {', '.join(sorted(valid_steps))}"
         )
 
     step_runners = {pipeline_step.name: pipeline_step.runner for pipeline_step in definition.steps}

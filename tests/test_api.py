@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from textwrap import dedent
+from typing import Literal
 
 import pytest
 
@@ -70,7 +71,9 @@ def test_run_from_config_applies_overrides(
     def fake_check_api(_settings: object) -> None:
         calls["checked_api"] = True
 
-    def fake_run_pipeline(step: str, settings: object, force: bool, list_only: bool) -> None:
+    def fake_run_pipeline(
+        step: Literal["all", "download"], settings: object, force: bool, list_only: bool
+    ) -> None:
         calls["step"] = step
         calls["force"] = force
         calls["list_only"] = list_only
@@ -126,7 +129,9 @@ def test_run_from_config_uses_source_override_for_pipeline_validation(
 
     monkeypatch.setattr("ukam_os_builder.api.api.get_package_version", lambda _settings: None)
 
-    def fake_run_pipeline(step: str, settings: object, force: bool, list_only: bool) -> None:
+    def fake_run_pipeline(
+        step: Literal["all", "download"], settings: object, force: bool, list_only: bool
+    ) -> None:
         calls["step"] = step
         calls["source"] = settings.source.type
         calls["force"] = force
