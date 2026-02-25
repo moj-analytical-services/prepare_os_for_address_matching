@@ -118,6 +118,56 @@ def _resolve_path(base_dir: Path, path_str: str) -> Path:
     return (base_dir / path).resolve()
 
 
+def resolve_paths(config: dict[str, Any], config_dir: Path) -> dict[str, Path | None]:
+    """Resolve all runtime paths from config using work_dir defaults and optional overrides."""
+    paths_config = config.get("paths", {})
+    if not isinstance(paths_config, dict):
+        raise SettingsError("paths must be a mapping in config.yaml")
+
+    work_dir_raw = str(paths_config.get("work_dir", "./data"))
+    work_dir = _resolve_path(config_dir, work_dir_raw)
+
+    defaults = {
+        "downloads_dir": work_dir / "downloads",
+        "extracted_dir": work_dir / "extracted",
+        "parquet_dir": work_dir / "parquet",
+        "output_dir": work_dir / "output",
+    }
+
+    raw_overrides = paths_config.get("overrides") or {}
+    if not isinstance(raw_overrides, dict):
+        raise SettingsError("paths.overrides must be a mapping in config.yaml")
+
+    legacy_keys = ("downloads_dir", "extracted_dir", "parquet_dir", "output_dir")
+    illegal_legacy = [key for key in legacy_keys if key in paths_config]
+    if illegal_legacy:
+        illegal_display = ", ".join(f"paths.{key}" for key in illegal_legacy)
+        raise SettingsError(
+            f"{illegal_display} are no longer supported. Use paths.overrides instead."
+        )
+
+    overrides: dict[str, Path] = {}
+    for key in defaults:
+        value = raw_overrides.get(key)
+        if value is not None:
+            overrides[key] = _resolve_path(config_dir, str(value))
+
+    schema_path_value = paths_config.get("schema_path")
+
+    return {
+        "work_dir": work_dir,
+        "downloads_dir": overrides.get("downloads_dir", defaults["downloads_dir"]),
+        "extracted_dir": overrides.get("extracted_dir", defaults["extracted_dir"]),
+        "parquet_dir": overrides.get("parquet_dir", defaults["parquet_dir"]),
+        "output_dir": overrides.get("output_dir", defaults["output_dir"]),
+        "schema_path": (
+            _resolve_path(config_dir, str(schema_path_value))
+            if schema_path_value is not None
+            else None
+        ),
+    }
+
+
 def _load_yaml(config_path: Path) -> dict[str, Any]:
     """Load YAML configuration file."""
     if not config_path.exists():
@@ -185,29 +235,7 @@ def load_settings(
     # Validate environment variables
     api_key, api_secret = _validate_env_vars()
 
-    paths_config = config.get("paths", {})
-    if not isinstance(paths_config, dict):
-        raise SettingsError("paths must be a mapping in config.yaml")
-
-    work_dir_raw = str(paths_config.get("work_dir", "./data"))
-    downloads_dir_raw = str(paths_config.get("downloads_dir", Path(work_dir_raw) / "downloads"))
-    extracted_dir_raw = str(paths_config.get("extracted_dir", Path(work_dir_raw) / "extracted"))
-    output_dir_raw = str(paths_config.get("output_dir", Path(work_dir_raw) / "output"))
-    parquet_dir_raw = str(paths_config.get("parquet_dir", Path(work_dir_raw) / "parquet"))
-    schema_path_value = paths_config.get("schema_path")
-
-    resolved_paths = {
-        "work_dir": _resolve_path(base_dir, work_dir_raw),
-        "downloads_dir": _resolve_path(base_dir, downloads_dir_raw),
-        "extracted_dir": _resolve_path(base_dir, extracted_dir_raw),
-        "output_dir": _resolve_path(base_dir, output_dir_raw),
-        "parquet_dir": _resolve_path(base_dir, parquet_dir_raw),
-        "schema_path": (
-            _resolve_path(base_dir, str(schema_path_value))
-            if schema_path_value is not None
-            else None
-        ),
-    }
+    resolved_paths = resolve_paths(config=config, config_dir=base_dir)
 
     os_config = config.get("os_downloads", {})
     if not isinstance(os_config, dict):

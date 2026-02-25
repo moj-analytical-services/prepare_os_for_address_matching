@@ -33,10 +33,6 @@ def test_setup_wizard_prompts_for_env_credentials_and_overwrites_existing(
                 "pkg-1",
                 "ver-1",
                 "",
-                "",
-                "",
-                "",
-                "",
                 "n",  # advanced settings
                 "y",  # setup .env now
                 "y",  # overwrite existing .env
@@ -79,10 +75,6 @@ def test_setup_wizard_skips_env_update_when_user_declines(
                 "pkg-1",
                 "ver-1",
                 "",
-                "",
-                "",
-                "",
-                "",
                 "n",  # advanced settings
                 "n",  # setup .env now
             ]
@@ -121,10 +113,6 @@ def test_setup_wizard_decline_overwrite_keeps_existing_env(
                 "",  # source (default)
                 "pkg-1",
                 "ver-1",
-                "",
-                "",
-                "",
-                "",
                 "",
                 "n",  # advanced settings
                 "y",  # setup .env now

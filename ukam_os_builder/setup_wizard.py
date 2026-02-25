@@ -119,8 +119,6 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--api-key and --api-secret must be provided together")
 
     config = load_existing_defaults(config_out)
-    if args.source is not None:
-        config["source"]["type"] = args.source
 
     if args.non_interactive:
         if not args.source:
@@ -131,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
         config["source"]["type"] = args.source
         config["os_downloads"]["package_id"] = args.package_id
         config["os_downloads"]["version_id"] = args.version_id
+        config["paths"] = {
+            "work_dir": str(config.get("paths", {}).get("work_dir", "./data")),
+        }
     else:
         console.print(
             Panel.fit(
@@ -157,27 +158,12 @@ def main(argv: list[str] | None = None) -> int:
             "",
         )
 
-        console.print("\n[bold]Paths[/bold] (press Enter to keep defaults)")
-        config["paths"]["work_dir"] = _prompt_non_empty(
-            "work_dir",
-            str(config["paths"].get("work_dir", "./data")),
+        console.print("\n[bold]Paths[/bold]")
+        work_dir = _prompt_non_empty(
+            "Where should the tool store its working data?",
+            str(config.get("paths", {}).get("work_dir", "./data")),
         )
-        config["paths"]["downloads_dir"] = _prompt_non_empty(
-            "downloads_dir",
-            str(config["paths"].get("downloads_dir", "./data/downloads")),
-        )
-        config["paths"]["extracted_dir"] = _prompt_non_empty(
-            "extracted_dir",
-            str(config["paths"].get("extracted_dir", "./data/extracted")),
-        )
-        config["paths"]["parquet_dir"] = _prompt_non_empty(
-            "parquet_dir",
-            str(config["paths"].get("parquet_dir", "./data/parquet")),
-        )
-        config["paths"]["output_dir"] = _prompt_non_empty(
-            "output_dir",
-            str(config["paths"].get("output_dir", "./data/output")),
-        )
+        config["paths"] = {"work_dir": work_dir}
 
         if _confirm("Configure advanced processing settings?", default_yes=False):
             config["processing"]["num_chunks"] = _prompt_int(
@@ -230,21 +216,20 @@ def main(argv: list[str] | None = None) -> int:
     console.print(f"[green]✓[/green] Wrote config: [bold]{config_out}[/bold]")
     if env_written:
         console.print(f"[green]✓[/green] Wrote .env file: [bold]{env_out}[/bold]")
+    elif write_env:
+        console.print(
+            f"[yellow]•[/yellow] Kept existing .env file: [bold]{env_out}[/bold] "
+            "(use --overwrite-env to replace)"
+        )
     else:
-        if write_env:
-            console.print(
-                f"[yellow]•[/yellow] Kept existing .env file: [bold]{env_out}[/bold] "
-                "(use --overwrite-env to replace)"
-            )
-        else:
-            console.print(
-                f"[yellow]•[/yellow] Skipped .env updates: [bold]{env_out}[/bold] "
-                "(existing file left unchanged)"
-            )
-            console.print(
-                "[yellow]Next:[/yellow] add real values for OS_PROJECT_API_KEY and "
-                "OS_PROJECT_API_SECRET in .env before running."
-            )
+        console.print(
+            f"[yellow]•[/yellow] Skipped .env updates: [bold]{env_out}[/bold] "
+            "(existing file left unchanged)"
+        )
+        console.print(
+            "[yellow]Next:[/yellow] add real values for OS_PROJECT_API_KEY and "
+            "OS_PROJECT_API_SECRET in .env before running."
+        )
 
     return 0
 

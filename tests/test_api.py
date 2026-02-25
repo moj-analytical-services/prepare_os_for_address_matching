@@ -85,9 +85,6 @@ def test_run_from_config_applies_overrides(
         """
         paths:
           work_dir: ./data
-          downloads_dir: ./data/downloads
-          extracted_dir: ./data/extracted
-          output_dir: ./data/output
 
         os_downloads:
           package_id: "16465"
@@ -273,10 +270,6 @@ def test_run_from_config_applies_schema_path_override(
 
                 paths:
                     work_dir: ./data
-                    downloads_dir: ./data/downloads
-                    extracted_dir: ./data/extracted
-                    output_dir: ./data/output
-                    parquet_dir: ./data/parquet
 
                 os_downloads:
                     package_id: "16465"

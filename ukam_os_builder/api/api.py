@@ -19,10 +19,7 @@ SourceType = Literal["ngd", "abp"]
 DEFAULT_CONFIG: dict[str, object] = {
     "paths": {
         "work_dir": "./data",
-        "downloads_dir": "./data/downloads",
-        "extracted_dir": "./data/extracted",
-        "parquet_dir": "./data/parquet",
-        "output_dir": "./data/output",
+        "overrides": {},
     },
     "source": {
         "type": "ngd",
@@ -57,15 +54,14 @@ def render_annotated_config(config: dict[str, object]) -> str:
         "# All paths are relative to this config file's directory unless absolute\n\n"
         "paths:\n"
         "  # Base working directory for all data\n"
-        f"  work_dir: {paths['work_dir']}\n\n"
-        "  # Downloaded zip files from OS\n"
-        f"  downloads_dir: {paths['downloads_dir']}\n\n"
-        "  # Extracted CSV files and intermediate parquet\n"
-        f"  extracted_dir: {paths['extracted_dir']}\n\n"
-        "  # ABP split parquet staging directory\n"
-        f"  parquet_dir: {paths['parquet_dir']}\n\n"
-        "  # Final output parquet files\n"
-        f"  output_dir: {paths['output_dir']}\n\n"
+        f"  work_dir: {paths['work_dir']}\n"
+        "\n"
+        "  # Most users won't need this: override derived directories only if required\n"
+        "  # overrides:\n"
+        "  #   downloads_dir: ./somewhere/downloads\n"
+        "  #   extracted_dir: /mnt/fast/extracted\n"
+        "  #   parquet_dir: ./data/parquet\n"
+        "  #   output_dir: ./output\n\n"
         "source:\n"
         "  # Source dataset to process: ngd or abp\n"
         f"  type: {config['source']['type']}\n\n"
@@ -102,7 +98,11 @@ def load_existing_defaults(config_path: Path) -> dict[str, object]:
         loaded = yaml.safe_load(f) or {}
 
     merged = DEFAULT_CONFIG | loaded
-    merged["paths"] = {**DEFAULT_CONFIG["paths"], **(loaded.get("paths") or {})}
+    loaded_paths = loaded.get("paths") if isinstance(loaded.get("paths"), dict) else {}
+    merged["paths"] = {
+        "work_dir": loaded_paths.get("work_dir", DEFAULT_CONFIG["paths"]["work_dir"]),
+        "overrides": dict(loaded_paths.get("overrides") or {}),
+    }
     merged["source"] = {**DEFAULT_CONFIG["source"], **(loaded.get("source") or {})}
     merged["os_downloads"] = {
         **DEFAULT_CONFIG["os_downloads"],
@@ -250,6 +250,10 @@ def apply_run_overrides(
 
     if work_dir:
         settings.paths.work_dir = Path(work_dir).resolve()
+        settings.paths.downloads_dir = settings.paths.work_dir / "downloads"
+        settings.paths.extracted_dir = settings.paths.work_dir / "extracted"
+        settings.paths.parquet_dir = settings.paths.work_dir / "parquet"
+        settings.paths.output_dir = settings.paths.work_dir / "output"
     if downloads_dir:
         settings.paths.downloads_dir = Path(downloads_dir).resolve()
     if extracted_dir:
@@ -328,6 +332,11 @@ def run_from_config(
         parquet_compression=parquet_compression,
         parquet_compression_level=parquet_compression_level,
     )
+    logger.info("Resolved work_dir: %s", settings.paths.work_dir)
+    logger.info("Resolved downloads_dir: %s", settings.paths.downloads_dir)
+    logger.info("Resolved extracted_dir: %s", settings.paths.extracted_dir)
+    logger.info("Resolved parquet_dir: %s", settings.paths.parquet_dir)
+    logger.info("Resolved output_dir: %s", settings.paths.output_dir)
 
     source_type = settings.source.type
     if step != "all":

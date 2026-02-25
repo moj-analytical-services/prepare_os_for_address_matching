@@ -25,9 +25,6 @@ def test_load_settings_resolves_paths_relative_to_config(
         """
         paths:
           work_dir: ./data
-          downloads_dir: ./data/downloads
-          extracted_dir: ./data/extracted
-          output_dir: ./data/output
 
         os_downloads:
           package_id: "16465"
@@ -57,9 +54,6 @@ def test_load_settings_rejects_unknown_config_key(
         """
         paths:
           work_dir: ./data
-          downloads_dir: ./data/downloads
-          extracted_dir: ./data/extracted
-          output_dir: ./data/output
 
         os_downloads:
           package_id: "16465"
@@ -87,9 +81,6 @@ def test_load_settings_missing_package_id_has_clear_message(
         """
         paths:
           work_dir: ./data
-          downloads_dir: ./data/downloads
-          extracted_dir: ./data/extracted
-          output_dir: ./data/output
 
         os_downloads:
           version_id: "104444"
@@ -141,9 +132,6 @@ def test_load_settings_requires_env_vars(tmp_path: Path, monkeypatch: pytest.Mon
         """
         paths:
           work_dir: ./data
-          downloads_dir: ./data/downloads
-          extracted_dir: ./data/extracted
-          output_dir: ./data/output
 
         os_downloads:
           package_id: "16465"
@@ -167,9 +155,6 @@ def test_load_settings_validates_positive_read_timeout(
         """
         paths:
           work_dir: ./data
-          downloads_dir: ./data/downloads
-          extracted_dir: ./data/extracted
-          output_dir: ./data/output
 
         os_downloads:
           package_id: "16465"
@@ -205,3 +190,59 @@ def test_load_settings_defaults_source_and_num_chunks(
 
     assert settings.source.type == "ngd"
     assert settings.processing.num_chunks == 20
+
+
+def test_load_settings_applies_path_overrides(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OS_PROJECT_API_KEY", "key")
+    monkeypatch.setenv("OS_PROJECT_API_SECRET", "secret")
+
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        """
+        paths:
+          work_dir: ./data
+          overrides:
+            downloads_dir: ./custom/downloads
+            extracted_dir: /tmp/extracted
+
+        os_downloads:
+          package_id: "16465"
+          version_id: "104444"
+        """,
+    )
+
+    settings = load_settings(config_path, load_env=False)
+
+    assert settings.paths.work_dir == (tmp_path / "data").resolve()
+    assert settings.paths.downloads_dir == (tmp_path / "custom/downloads").resolve()
+    assert str(settings.paths.extracted_dir).endswith("/tmp/extracted")
+    assert settings.paths.parquet_dir == (tmp_path / "data/parquet").resolve()
+    assert settings.paths.output_dir == (tmp_path / "data/output").resolve()
+
+
+def test_load_settings_rejects_legacy_path_keys(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("OS_PROJECT_API_KEY", "key")
+    monkeypatch.setenv("OS_PROJECT_API_SECRET", "secret")
+
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        """
+        paths:
+          work_dir: ./data
+          downloads_dir: ./legacy/downloads
+
+        os_downloads:
+          package_id: "16465"
+          version_id: "104444"
+        """,
+    )
+
+    with pytest.raises(SettingsError, match="no longer supported"):
+        load_settings(config_path, load_env=False)
