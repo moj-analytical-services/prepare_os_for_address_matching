@@ -96,7 +96,7 @@ def _definition_for_source(source: SourceType) -> PipelineDefinition:
 
 
 def run(
-    step: str,
+    step: Literal["all", "download"],
     settings: Settings,
     force: bool = False,
     list_only: bool = False,
