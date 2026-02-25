@@ -5,15 +5,6 @@ paths:
   # Base working directory for all data
   work_dir: ./data
 
-  # Downloaded zip files from OS
-  downloads_dir: ./data/downloads
-
-  # Extracted CSV files and intermediate parquet
-  extracted_dir: ./data/extracted
-
-  # Final output parquet files
-  output_dir: ./data/output
-
 # OS Data Hub download settings
 # Given a datapackage at: https://osdatahub.os.uk/data/downloads/data-packages/16331
 # You can get versions from:
