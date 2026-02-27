@@ -157,7 +157,7 @@ ukam-os-build --config config.yaml
 
 1. `download` - fetch package metadata and zip files from OS Data Hub.
 2. `extract` - extract CSVs from downloaded zip files and convert to parquet.
-3. `split` - ABP only: split raw records into parquet staging files.
+3. `split` - ABP only: split raw records and write only parquet staging files used by flatfile generation (`street_descriptor`, `blpu`, `lpi`, `delivery_point`, `organisation`, `classification`).
 4. `flatfile` - transform and deduplicate into final output parquet file(s).
 
 All stages are idempotent. Use `--overwrite` to regenerate outputs (`--force` is accepted as a backward-compatible alias).
