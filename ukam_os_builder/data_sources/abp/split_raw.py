@@ -1,8 +1,8 @@
 """Split raw ABP data module.
 
 Reads raw ABP CSV files (which contain all record types mixed together),
-splits them by record identifier (10/11/15/21/24/28/31/32/99 etc.),
-and writes one parquet file per record type.
+filters to the record types needed for flatfile creation, and writes
+one parquet file per required record type.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from ukam_os_builder.api.settings import Settings, create_duckdb_connection
 
 logger = logging.getLogger(__name__)
 
-# Record identifier to table name mapping
-RECORD_TYPE_MAP = {
+# All known ABP record identifiers
+ALL_RECORD_TYPE_MAP = {
     "10": "header",
     "11": "street",
     "15": "street_descriptor",
@@ -33,6 +33,16 @@ RECORD_TYPE_MAP = {
     "31": "organisation",
     "32": "classification",
     "99": "trailer",
+}
+
+# Record identifiers needed for ABP flatfile creation
+RECORD_TYPE_MAP = {
+    "15": "street_descriptor",
+    "21": "blpu",
+    "24": "lpi",
+    "28": "delivery_point",
+    "31": "organisation",
+    "32": "classification",
 }
 
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "abp_schema.yaml"
@@ -169,12 +179,23 @@ def split_raw_to_parquet(
             input_counts[name] = count
             logger.debug("Record type %s (%s): %d lines", rid, name, count)
 
+        unused_rids = sorted(set(ALL_RECORD_TYPE_MAP) - set(RECORD_TYPE_MAP))
+        rid_list_sql = ", ".join([f"'{rid}'" for rid in unused_rids])
+        ignored_input = con.execute(f"""
+            SELECT COUNT(*)
+            FROM lines_with_rid
+            WHERE rid IN ({rid_list_sql})
+        """).fetchone()[0]
+
         total_input = sum(input_counts.values())
-        logger.info("Total input lines (with valid record IDs): %d", total_input)
+        logger.info("Total input lines (processed record IDs): %d", total_input)
+        if ignored_input > 0:
+            logger.info("Ignored input lines (unused record IDs): %d", ignored_input)
         if total_input == 0:
             raise ValueError(
                 "No ABP record identifiers found in extracted CSV input. "
-                "Ensure --source abp is used with ABP raw extracts (record IDs 10/11/15/21/24/28/31/32/99)."
+                "Ensure --source abp is used with ABP raw extracts "
+                "(required record IDs: 15/21/24/28/31/32)."
             )
 
         # 4) Process each record type
@@ -279,7 +300,7 @@ def split_raw_to_parquet(
         total_output = sum(output_counts.values())
         logger.info("")
         logger.info("=== Validation: Line count check ===")
-        logger.info("Input lines (with valid record IDs): %d", total_input)
+        logger.info("Input lines (processed record IDs): %d", total_input)
         logger.info("Output rows (parquet): %d", total_output)
 
         if total_input == total_output:
