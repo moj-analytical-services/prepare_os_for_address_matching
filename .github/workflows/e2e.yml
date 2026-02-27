@@ -1,0 +1,147 @@
+name: End-to-end tests
+
+on:
+    pull_request:
+        branches: [main]
+
+permissions:
+    contents: read
+
+concurrency:
+    group: e2e-${{ github.head_ref || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    e2e:
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - source: ngd
+                      package_id: "18296"
+                      version_id: "118120"
+                    - source: abp
+                      package_id: "0040206240"
+                      version_id: "6777574"
+
+        name: E2E – ${{ matrix.source }}
+
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Mask API credentials
+              run: |
+                  echo "::add-mask::${{ secrets.OS_PROJECT_API_KEY }}"
+                  echo "::add-mask::${{ secrets.OS_PROJECT_API_SECRET }}"
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.10"
+
+            - name: Set up uv
+              uses: astral-sh/setup-uv@v7
+              with:
+                  enable-cache: true
+                  cache-dependency-glob: "uv.lock"
+
+            - name: Install dependencies
+              run: uv sync --all-extras --all-groups
+
+            - name: Write config.yaml
+              run: |
+                  printf '%s\n' \
+                    'paths:'                                          \
+                    '  work_dir: ./data'                              \
+                    ''                                                \
+                    'source:'                                         \
+                    '  type: ${{ matrix.source }}'                    \
+                    ''                                                \
+                    'os_downloads:'                                   \
+                    '  package_id: "${{ matrix.package_id }}"'        \
+                    '  version_id: "${{ matrix.version_id }}"'        \
+                    ''                                                \
+                    'processing:'                                     \
+                    '  parquet_compression: zstd'                     \
+                    '  parquet_compression_level: 9'                  \
+                    '  num_chunks: 1'                                 \
+                    > config.yaml
+
+            - name: Run full pipeline
+              env:
+                  OS_PROJECT_API_KEY: ${{ secrets.OS_PROJECT_API_KEY }}
+                  OS_PROJECT_API_SECRET: ${{ secrets.OS_PROJECT_API_SECRET }}
+              run: uv run ukam-os-build --verbose
+
+            - name: Verify output files exist
+              run: |
+                  echo "=== Output directory ==="
+                  ls -lhR data/output/
+                  echo ""
+                  echo "=== Checking for parquet files ==="
+                  count=$(find data/output -name '*.parquet' | wc -l)
+                  echo "Found $count parquet file(s) in data/output/"
+                  if [ "$count" -eq 0 ]; then
+                    echo "::error::No parquet output files found!"
+                    exit 1
+                  fi
+
+            - name: Preview first output row
+              run: |
+                  uv run python -c "
+                  import duckdb
+                  con = duckdb.connect()
+                  con.sql(\"SELECT * FROM read_parquet('data/output/*.parquet')\").show(max_rows=1, max_width=10000)
+                  "
+
+            # ── Second run: offline (no API credentials) ──────────────
+            - name: Record download file timestamps
+              run: |
+                  stat -c '%n %Y' data/downloads/* | sort > /tmp/downloads_before.txt
+                  echo "=== Download file timestamps ==="
+                  cat /tmp/downloads_before.txt
+
+            - name: Remove everything except downloads and block API access
+              run: |
+                  find data -mindepth 1 -maxdepth 1 ! -name downloads -exec rm -rf {} +
+                  echo "=== Remaining data tree ==="
+                  find data -type f | sort
+
+            - name: Re-run pipeline without API credentials
+              run: |
+                  unset OS_PROJECT_API_KEY OS_PROJECT_API_SECRET
+                  uv run ukam-os-build --verbose --overwrite
+
+            - name: Verify output files exist (offline run)
+              run: |
+                  echo "=== Output directory ==="
+                  ls -lhR data/output/
+                  echo ""
+                  echo "=== Checking for parquet files ==="
+                  count=$(find data/output -name '*.parquet' | wc -l)
+                  echo "Found $count parquet file(s) in data/output/"
+                  if [ "$count" -eq 0 ]; then
+                    echo "::error::No parquet output files found on offline run!"
+                    exit 1
+                  fi
+
+            - name: Preview first output row (offline run)
+              run: |
+                  uv run python -c "
+                  import duckdb
+                  con = duckdb.connect()
+                  con.sql(\"SELECT * FROM read_parquet('data/output/*.parquet')\").show(max_rows=1, max_width=10000)
+                  "
+
+            - name: Verify downloads were not modified
+              run: |
+                  stat -c '%n %Y' data/downloads/* | sort > /tmp/downloads_after.txt
+                  echo "=== Download file timestamps after offline run ==="
+                  cat /tmp/downloads_after.txt
+                  if ! diff -q /tmp/downloads_before.txt /tmp/downloads_after.txt; then
+                    echo "::error::Download file timestamps changed – files were unexpectedly modified!"
+                    diff /tmp/downloads_before.txt /tmp/downloads_after.txt
+                    exit 1
+                  fi
+                  echo "Download timestamps unchanged – existing archives were reused as expected."
