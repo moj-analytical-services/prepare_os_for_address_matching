@@ -51,36 +51,53 @@ jobs:
 
             core.setOutput('release_sha', tagSha);
 
-      - name: Find successful build artifact run
+      - name: Wait for successful CI build artifact
         id: find_build
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
             const sha = '${{ steps.main_guard.outputs.release_sha }}';
+            const maxAttempts = 30;   // 30 × 20 s = 10 minutes
+            const delayMs = 20_000;   // 20 seconds between polls
 
-            const runs = await github.rest.actions.listWorkflowRuns({
-              owner,
-              repo,
-              workflow_id: 'ci.yml',
-              head_sha: sha,
-              event: 'push',
-              status: 'completed',
-              per_page: 50,
-            });
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: 'ci.yml',
+                head_sha: sha,
+                event: 'push',
+                status: 'completed',
+                per_page: 50,
+              });
 
-            const run = runs.data.workflow_runs.find((r) => r.conclusion === 'success');
+              const success = runs.data.workflow_runs.find(r => r.conclusion === 'success');
+              if (success) {
+                core.info(`Found successful CI run ${success.id} (${success.html_url})`);
+                core.setOutput('run_id', String(success.id));
+                return;
+              }
 
-            if (!run) {
-              core.setFailed(
-                `No successful Build & package run found for commit ${sha}. ` +
-                'Wait for the main build to pass, then re-run this release workflow.'
-              );
-              return;
+              const failed = runs.data.workflow_runs.find(r => r.conclusion === 'failure');
+              if (failed) {
+                core.setFailed(
+                  `CI run ${failed.id} failed for commit ${sha}. ` +
+                  'Fix CI before releasing.'
+                );
+                return;
+              }
+
+              if (attempt < maxAttempts) {
+                core.info(`Attempt ${attempt}/${maxAttempts}: CI not finished yet — waiting ${delayMs / 1000}s …`);
+                await new Promise(r => setTimeout(r, delayMs));
+              }
             }
 
-            core.info(`Using build run id ${run.id} from ${run.html_url}`);
-            core.setOutput('run_id', String(run.id));
+            core.setFailed(
+              `No successful CI run found for commit ${sha} after ${maxAttempts} attempts (≈10 min). ` +
+              'Check whether the CI workflow was triggered for this commit.'
+            );
 
       - name: Download built dist artifact
         uses: actions/download-artifact@v4
